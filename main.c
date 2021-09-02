@@ -26,6 +26,8 @@
 
 #include "stdio.h"
 
+#define CODE 7
+
 static uint16_t open_flag = 0;
 
 //*********SHELL working area*********//
@@ -94,6 +96,33 @@ static PWMConfig pwmcfg = {
 };
 
 
+//*********TIMx configuration ICU *********//
+
+static int rotation_number = 0;
+
+/* Callback called at the end of period*/
+static void cbIcuPeriod(ICUDriver *icup) {
+  (void)icup;
+  rotation_number = rotation_number + 1;   // Increases counter variable
+}
+
+/* Callback called at the end of pulse*/
+/*static void cbIcuWidth(ICUDriver *icup) {
+  last_width = icuGetWidthX(icup);                                              // Gets duration of last width in ticks
+}*/
+
+static ICUConfig icucfg = {
+  ICU_INPUT_ACTIVE_HIGH,                                                        // ICU is configured on active level
+  1000,                                                                         // Frequency is 1 kHz
+  NULL,                                                                   // This callback is called when input signal pass from the high level to low level
+  cbIcuPeriod,                                                                  // This callback is called when input signal pass from the low level to high level
+  NULL,                                                                         // There is no callback when the counter goes in overflow
+  ICU_CHANNEL_1,                                                                // It configures the first channel of ICU Driver
+};
+
+
+
+
 //*********SERVO control Thread************//
 
 static THD_WORKING_AREA(waServoThread, 128);
@@ -148,12 +177,38 @@ static THD_FUNCTION(PhotoResistorThread, arg) {
       palSetPad(GPIOA,8U);
       palClearPad(GPIOA,9U);
     }
-    else           //Locker chiuso --> accendo LED Giallo
+    else           //Locker chiuso --> accendo LED Giallo e metto il flag di apertura porta a 0
     {
       palSetPad(GPIOA,8U);
       palSetPad(GPIOA,9U);
+      open_flag = 0;
     }
 
+      // This waits 1 second
+      chThdSleepMilliseconds(1000);
+  }
+}
+
+//*********Inserimento codice PIN************//
+
+static THD_WORKING_AREA(waCode, 128);
+static THD_FUNCTION(Code, arg) {
+  (void)arg;
+  chRegSetThreadName("Code");
+
+  while(true)
+  {
+    //if(!palReadPad(GPIOB,3U))
+    if(!palReadPad(GPIOC,GPIOC_BUTTON))
+    {
+      switch (rotation_number)
+      {
+      case CODE:
+        open_flag = 1;
+        break;
+      }
+      rotation_number = 0;
+    }
       // This waits 1 second
       chThdSleepMilliseconds(1000);
   }
@@ -164,9 +219,21 @@ int main(void) {
   halInit();
   chSysInit();
 
+  int sw_encoder = 2;
+
+  //Collego A0 al TIM5
+   palSetPadMode(GPIOA, 0, PAL_MODE_ALTERNATE(2));
+
+   //Abilito ICU su TIM5
+   icuStart(&ICUD5, &icucfg);
+   icuStartCapture(&ICUD5);
+   icuEnableNotifications(&ICUD5);
+
   //ADC connection --> PINC0
   palSetPadMode(GPIOC,0U,PAL_MODE_INPUT_ANALOG);
 
+  //GPIOB3 connesso allo SW dell'encoder
+  palSetPadMode(GPIOB,3U,PAL_MODE_INPUT);
 
   //Configurazione BLUE_BUTTON
   palSetPadMode(GPIOC,GPIOC_BUTTON,PAL_MODE_INPUT);
@@ -193,15 +260,19 @@ int main(void) {
   pwmEnableChannelNotification(&PWMD3,0);
 
   // Thread segnale PWM per controllo SERVO
-  chThdCreateStatic(waServoThread, sizeof(waServoThread), NORMALPRIO+2, ServoThread, &open_flag);
+  chThdCreateStatic(waServoThread, sizeof(waServoThread), NORMALPRIO+1, ServoThread, &open_flag);
 
   //Thread convertitore ADC per lettura fotoresistore
   chThdCreateStatic(waPhotoResistorThread, sizeof(waPhotoResistorThread), NORMALPRIO+1, PhotoResistorThread, NULL);
 
+  //Thread convertitore ADC per lettura fotoresistore
+  chThdCreateStatic(waCode, sizeof(waCode), NORMALPRIO+2, Code, NULL);
+
 
   while (true) {
 
-    if(!palReadPad(GPIOC,GPIOC_BUTTON))
+    sw_encoder = palReadPad(GPIOB,3U);
+    /*if(!palReadPad(GPIOC,GPIOC_BUTTON))
     {
       while(!palReadPad(GPIOC,GPIOC_BUTTON)) //Fino a quando il pulsante viene premuto apro la porta
       {
@@ -209,7 +280,7 @@ int main(void) {
         chThdSleepMilliseconds(20);//Debouncing time
       }
     }
-    open_flag = 0;
+    open_flag = 0;*/
 
     chThdSleepMilliseconds(1000);
   }

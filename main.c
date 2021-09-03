@@ -223,14 +223,6 @@ static THD_FUNCTION(Code, arg) {
   ssd1306Start(&SSD1306D1, &ssd1306cfg);
   ssd1306FillScreen(&SSD1306D1, 0x00);
 
-  ssd1306GotoXy(&SSD1306D1, 0, 1);
-  chsnprintf(buff, BUFF_SIZE, "ScassaForte");
-  ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
-
-  ssd1306GotoXy(&SSD1306D1, 0, 20);
-  chsnprintf(buff, BUFF_SIZE, "Insert PIN");
-  ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_7x10, SSD1306_COLOR_BLACK);
-
   ssd1306UpdateScreen(&SSD1306D1);
 
   while(true)
@@ -239,7 +231,15 @@ static THD_FUNCTION(Code, arg) {
     //Upoad Display
     ssd1306FillScreen(&SSD1306D1, 0x00);//pulizia dello schermo
 
-    ssd1306GotoXy(&SSD1306D1,55,27);
+    ssd1306GotoXy(&SSD1306D1, 5, 1);
+    chsnprintf(buff, BUFF_SIZE, "ScassaForte");
+    ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
+
+    ssd1306GotoXy(&SSD1306D1, 20, 20);
+    chsnprintf(buff, BUFF_SIZE, "Insert PIN");
+    ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_7x10, SSD1306_COLOR_BLACK);
+
+    ssd1306GotoXy(&SSD1306D1,55,35);
     chsnprintf(buff, BUFF_SIZE, "%d",rotation_number);
     ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
 

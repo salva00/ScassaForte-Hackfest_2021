@@ -120,19 +120,17 @@ static SSD1306Driver SSD1306D1;
 //*********TIMx configuration ICU *********//
 
 static int rotation_number = 0;
-char Disp[BUFF_SIZE],buff[BUFF_SIZE];
+char buff[BUFF_SIZE];
 
 /* Callback called at the end of period*/
 static void cbIcuPeriod(ICUDriver *icup) {
   (void)icup;
   rotation_number = rotation_number + 1;   // Increases counter variable
 
-  //stampa display numero
-  sprintf(Disp,"%d",5);
 
-  ssd1306GotoXy(&SSD1306D1,55,27);
-  chsnprintf(buff, BUFF_SIZE, Disp);
-  ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_BLACK);
+  ssd1306GotoXy(&SSD1306D1,0,1);
+  chsnprintf(buff, BUFF_SIZE, "%d",rotation_number);
+  ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
   ssd1306UpdateScreen(&SSD1306D1);
 
 }
@@ -174,7 +172,7 @@ static THD_FUNCTION(ServoThread, arg) {
       }
 
       // This waits 1 second
-      chThdSleepMilliseconds(1000);
+      chThdSleepMilliseconds(500);
   }
 }
 
@@ -214,7 +212,7 @@ static THD_FUNCTION(PhotoResistorThread, arg) {
     }
 
       // This waits 1 second
-      chThdSleepMilliseconds(1000);
+      chThdSleepMilliseconds(500);
   }
 }
 
@@ -250,7 +248,7 @@ static THD_FUNCTION(Code, arg) {
       rotation_number = 0;
     }
       // This waits 1 second
-      chThdSleepMilliseconds(1000);
+      chThdSleepMilliseconds(500);
   }
 }
 
@@ -260,6 +258,20 @@ int main(void) {
   chSysInit();
 
   sdStart(&SD2, NULL);
+
+  //PIN SDA/SCL
+  /* Configuring I2C related PINs */
+     palSetLineMode(LINE_ARD_D15, PAL_MODE_ALTERNATE(4) |
+                    PAL_STM32_OTYPE_OPENDRAIN | PAL_STM32_OSPEED_HIGHEST |
+                    PAL_STM32_PUPDR_PULLUP);
+     palSetLineMode(LINE_ARD_D14, PAL_MODE_ALTERNATE(4) |
+                    PAL_STM32_OTYPE_OPENDRAIN | PAL_STM32_OSPEED_HIGHEST |
+                    PAL_STM32_PUPDR_PULLUP);
+
+   //Start OLED
+   ssd1306ObjectInit(&SSD1306D1);
+   ssd1306Start(&SSD1306D1, &ssd1306cfg);
+   ssd1306FillScreen(&SSD1306D1, 0x00);
 
   //Collego A0 al TIM5
    palSetPadMode(GPIOA, 0, PAL_MODE_ALTERNATE(2));
@@ -299,10 +311,7 @@ int main(void) {
   // It enables the periodic callback at the end of pulse
   pwmEnableChannelNotification(&PWMD3,0);
 
-  //Start OLED
-  ssd1306ObjectInit(&SSD1306D1);
-  ssd1306Start(&SSD1306D1, &ssd1306cfg);
-  ssd1306FillScreen(&SSD1306D1, 0x00);
+
 
   //************Chiamate ai Thread**********//
 

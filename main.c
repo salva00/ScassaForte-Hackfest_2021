@@ -25,9 +25,14 @@
 #include "hal.h"
 
 #include "stdio.h"
+#include "chprintf.h"
+#include "ssd1306.h"
+
 
 #define CODE 7
+#define BUFF_SIZE 20
 
+BaseSequentialStream * chp = (BaseSequentialStream*) &SD2;
 static uint16_t open_flag = 0;
 
 //*********SHELL working area*********//
@@ -44,7 +49,7 @@ static adcsample_t samples1[ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH];
 
 //*********ADC Driver configuration************//
 
-size_t nx = 0, ny = 0;
+/*size_t nx = 0, ny = 0;
 static void adccallback(ADCDriver *adcp) {
 
   if (adcIsBufferComplete(adcp)) {
@@ -53,7 +58,7 @@ static void adccallback(ADCDriver *adcp) {
   else {
     ny += 1;
   }
-}
+}*/
 
 static void adcerrorcallback(ADCDriver *adcp, adcerror_t err) {
 
@@ -96,14 +101,40 @@ static PWMConfig pwmcfg = {
 };
 
 
+//**********ssd1306 configuration**********//
+
+static const I2CConfig i2ccfg = {
+  OPMODE_I2C,
+  400000,
+  FAST_DUTY_CYCLE_2,
+};
+
+static const SSD1306Config ssd1306cfg = {
+  &I2CD1,
+  &i2ccfg,
+  SSD1306_SAD_0X78,
+};
+
+static SSD1306Driver SSD1306D1;
+
 //*********TIMx configuration ICU *********//
 
 static int rotation_number = 0;
+char Disp[BUFF_SIZE],buff[BUFF_SIZE];
 
 /* Callback called at the end of period*/
 static void cbIcuPeriod(ICUDriver *icup) {
   (void)icup;
   rotation_number = rotation_number + 1;   // Increases counter variable
+
+  //stampa display numero
+  sprintf(Disp,"%d",5);
+
+  ssd1306GotoXy(&SSD1306D1,55,27);
+  chsnprintf(buff, BUFF_SIZE, Disp);
+  ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_BLACK);
+  ssd1306UpdateScreen(&SSD1306D1);
+
 }
 
 /* Callback called at the end of pulse*/
@@ -119,8 +150,6 @@ static ICUConfig icucfg = {
   NULL,                                                                         // There is no callback when the counter goes in overflow
   ICU_CHANNEL_1,                                                                // It configures the first channel of ICU Driver
 };
-
-
 
 
 //*********SERVO control Thread************//
@@ -201,11 +230,22 @@ static THD_FUNCTION(Code, arg) {
     //if(!palReadPad(GPIOB,3U))
     if(!palReadPad(GPIOC,GPIOC_BUTTON))
     {
-      switch (rotation_number)
+      while(!palReadPad(GPIOC,GPIOC_BUTTON))
+      {
+        chThdSleepMilliseconds(20);
+
+      }
+      /*switch (rotation_number)
       {
       case CODE:
         open_flag = 1;
         break;
+      default
+      }
+      rotation_number = 0;*/
+      if(rotation_number > 10)
+      {
+        open_flag = 1;
       }
       rotation_number = 0;
     }
@@ -219,7 +259,7 @@ int main(void) {
   halInit();
   chSysInit();
 
-  int sw_encoder = 2;
+  sdStart(&SD2, NULL);
 
   //Collego A0 al TIM5
    palSetPadMode(GPIOA, 0, PAL_MODE_ALTERNATE(2));
@@ -259,6 +299,13 @@ int main(void) {
   // It enables the periodic callback at the end of pulse
   pwmEnableChannelNotification(&PWMD3,0);
 
+  //Start OLED
+  ssd1306ObjectInit(&SSD1306D1);
+  ssd1306Start(&SSD1306D1, &ssd1306cfg);
+  ssd1306FillScreen(&SSD1306D1, 0x00);
+
+  //************Chiamate ai Thread**********//
+
   // Thread segnale PWM per controllo SERVO
   chThdCreateStatic(waServoThread, sizeof(waServoThread), NORMALPRIO+1, ServoThread, &open_flag);
 
@@ -271,7 +318,7 @@ int main(void) {
 
   while (true) {
 
-    sw_encoder = palReadPad(GPIOB,3U);
+
     /*if(!palReadPad(GPIOC,GPIOC_BUTTON))
     {
       while(!palReadPad(GPIOC,GPIOC_BUTTON)) //Fino a quando il pulsante viene premuto apro la porta

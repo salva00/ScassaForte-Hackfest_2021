@@ -125,7 +125,9 @@ char buff[BUFF_SIZE];
 /* Callback called at the end of period*/
 static void cbIcuPeriod(ICUDriver *icup) {
   (void)icup;
-  rotation_number = rotation_number + 1;   // Increases counter variable
+
+  if(!palReadPad(GPIOA,1U)) rotation_number += 1; //Clock wise --> increment counter
+  else rotation_number -= 1;
 }
 
 /* Callback called at the end of pulse*/
@@ -285,6 +287,9 @@ int main(void) {
 
   //Collego A0 al TIM5
    palSetPadMode(GPIOA, 0, PAL_MODE_ALTERNATE(2));
+
+   //Collego A1 per la direzione dell'encoder
+   palSetPadMode(GPIOA, 1, PAL_MODE_INPUT);
 
    //Abilito ICU su TIM5
    icuStart(&ICUD5, &icucfg);

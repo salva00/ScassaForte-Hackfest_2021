@@ -236,6 +236,7 @@ static THD_FUNCTION(Code, arg) {
   while(true)
   {
     //update OLED
+    ssd1306FillScreen(&SSD1306D1, 0x00);
     ssd1306GotoXy(&SSD1306D1,0,30);
     chsnprintf(buff, BUFF_SIZE, "%d",rotation_number);
     ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);

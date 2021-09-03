@@ -218,7 +218,7 @@ static THD_FUNCTION(Code, arg) {
   (void)arg;
   chRegSetThreadName("Code");
 
-  //start OLED
+  //Start OLED
   ssd1306ObjectInit(&SSD1306D1);
   ssd1306Start(&SSD1306D1, &ssd1306cfg);
   ssd1306FillScreen(&SSD1306D1, 0x00);
@@ -235,11 +235,14 @@ static THD_FUNCTION(Code, arg) {
 
   while(true)
   {
-    //update OLED
-    ssd1306FillScreen(&SSD1306D1, 0x00);
-    ssd1306GotoXy(&SSD1306D1,0,30);
+
+    //Upoad Display
+    ssd1306FillScreen(&SSD1306D1, 0x00);//pulizia dello schermo
+
+    ssd1306GotoXy(&SSD1306D1,55,27);
     chsnprintf(buff, BUFF_SIZE, "%d",rotation_number);
     ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
+
     ssd1306UpdateScreen(&SSD1306D1);
 
     //if(!palReadPad(GPIOB,3U))
@@ -250,19 +253,34 @@ static THD_FUNCTION(Code, arg) {
         chThdSleepMilliseconds(20);
 
       }
-      /*switch (rotation_number)
+      switch (rotation_number)
       {
       case CODE:
         open_flag = 1;
+
+        ssd1306FillScreen(&SSD1306D1, 0x00); //Pulizia dello schermo
+        ssd1306GotoXy(&SSD1306D1,0,27);
+        chsnprintf(buff, BUFF_SIZE, "Codice corretto");
+        ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
+
+         ssd1306UpdateScreen(&SSD1306D1);
         break;
-      default
+      default:
+
+        ssd1306FillScreen(&SSD1306D1, 0x00); //Pulizia dello schermo
+        ssd1306GotoXy(&SSD1306D1,0,27);
+        chsnprintf(buff, BUFF_SIZE, "Codice errato");
+        ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
+        ssd1306UpdateScreen(&SSD1306D1);
+
       }
-      rotation_number = 0;*/
-      if(rotation_number > 10)
+      rotation_number = 0;
+
+      /*if(rotation_number > 10)
       {
         open_flag = 1;
       }
-      rotation_number = 0;
+      rotation_number = 0;*/
     }
       // This waits 1 second
       chThdSleepMilliseconds(500);

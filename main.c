@@ -126,13 +126,6 @@ char buff[BUFF_SIZE];
 static void cbIcuPeriod(ICUDriver *icup) {
   (void)icup;
   rotation_number = rotation_number + 1;   // Increases counter variable
-
-
-  ssd1306GotoXy(&SSD1306D1,0,1);
-  chsnprintf(buff, BUFF_SIZE, "%d",rotation_number);
-  ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
-  ssd1306UpdateScreen(&SSD1306D1);
-
 }
 
 /* Callback called at the end of pulse*/
@@ -223,8 +216,29 @@ static THD_FUNCTION(Code, arg) {
   (void)arg;
   chRegSetThreadName("Code");
 
+  //start OLED
+  ssd1306ObjectInit(&SSD1306D1);
+  ssd1306Start(&SSD1306D1, &ssd1306cfg);
+  ssd1306FillScreen(&SSD1306D1, 0x00);
+
+  ssd1306GotoXy(&SSD1306D1, 0, 1);
+  chsnprintf(buff, BUFF_SIZE, "ScassaForte");
+  ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
+
+  ssd1306GotoXy(&SSD1306D1, 0, 20);
+  chsnprintf(buff, BUFF_SIZE, "Insert PIN");
+  ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_7x10, SSD1306_COLOR_BLACK);
+
+  ssd1306UpdateScreen(&SSD1306D1);
+
   while(true)
   {
+    //update OLED
+    ssd1306GotoXy(&SSD1306D1,0,30);
+    chsnprintf(buff, BUFF_SIZE, "%d",rotation_number);
+    ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
+    ssd1306UpdateScreen(&SSD1306D1);
+
     //if(!palReadPad(GPIOB,3U))
     if(!palReadPad(GPIOC,GPIOC_BUTTON))
     {
@@ -268,10 +282,6 @@ int main(void) {
                     PAL_STM32_OTYPE_OPENDRAIN | PAL_STM32_OSPEED_HIGHEST |
                     PAL_STM32_PUPDR_PULLUP);
 
-   //Start OLED
-   ssd1306ObjectInit(&SSD1306D1);
-   ssd1306Start(&SSD1306D1, &ssd1306cfg);
-   ssd1306FillScreen(&SSD1306D1, 0x00);
 
   //Collego A0 al TIM5
    palSetPadMode(GPIOA, 0, PAL_MODE_ALTERNATE(2));

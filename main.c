@@ -27,16 +27,17 @@
 #include "stdio.h"
 #include "chprintf.h"
 #include "ssd1306.h"
-#include "ir.h"
+//#include "ir.h"
 
 #define CODE 7
 #define BUFF_SIZE 20
-#define BTN_ENCODER_DIR_LINE     PAL_LINE( GPIOA, 1U )
-static uint16_t dir_flag = 0;
 
+BaseSequentialStream *chp = (BaseSequentialStream*)&SD2;
 static uint16_t open_flag = 0;
 static int error_count = 0;
-int lock_box = 0,press_button_flag = 0;//*********SHELL working area*********//
+int lock_box = 0, press_button_flag = 0;
+int encoder_dt_status;
+//*********SHELL working area*********//
 
 #define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
 
@@ -56,7 +57,7 @@ static void adcerrorcallback(ADCDriver *adcp, adcerror_t err) {
 }
 
 static const ADCConversionGroup adcgrpcfg1 = {
-                                              FALSE, /* circular     : Circular buffer mode  */
+FALSE, /* circular     : Circular buffer mode  */
                                               ADC_GRP1_NUM_CHANNELS, /* num_channels : Number of channels    */
                                               NULL, /* end_cb       : End Callback          */
                                               adcerrorcallback, /* error_cb     : Error Callback        */
@@ -89,23 +90,31 @@ static SSD1306Driver SSD1306D1;
 
 //*********TIMx configuration ICU *********//
 
-static void button_dir_cb(void *arg) {
-
-  (void)arg;
-  dir_flag = palReadLine(BTN_ENCODER_DIR_LINE);
-}
-
 static int rotation_number = 0;
 char buff[BUFF_SIZE];
 
 /* Callback called at the end of period*/
 static void cbIcuPeriod(ICUDriver *icup) {
   (void)icup;
-  if (!dir_flag)
+
+  encoder_dt_status = palReadPad(GPIOA,1U);
+
+  //if (!palReadPad(GPIOA, 1U))
+  if(!encoder_dt_status)
     rotation_number += 1; //Clock wise --> increment counter
+
   else
-    rotation_number -= 1;
+    rotation_number -= 1; //Se l'encoder è a 0, ripartiamo da 9 (catena chiusa)
+
 }
+
+static ICUConfig icucfg = {ICU_INPUT_ACTIVE_HIGH, // ICU is configured on active level
+    1000,                                                  // Frequency is 1 kHz
+    NULL, // This callback is called when input signal pass from the high level to low level
+    cbIcuPeriod, // This callback is called when input signal pass from the low level to high level
+    NULL,              // There is no callback when the counter goes in overflow
+    ICU_CHANNEL_1,             // It configures the first channel of ICU Driver
+    };
 
 //*********SERVO control Thread************//
 
@@ -148,9 +157,8 @@ static THD_FUNCTION(PhotoResistorThread, arg) {
 
     ave = 0;
     //calcolo il valor medio di tensione in ingresso e decido se la cassaforte è aperta o meno
-    for(int i = 0;i < ADC_GRP1_BUF_DEPTH;i++)
-    {
-      ave += (float) samples1[i];
+    for (int i = 0; i < ADC_GRP1_BUF_DEPTH; i++) {
+      ave += (float)samples1[i];
     }
 
     if (ave / ADC_GRP1_BUF_DEPTH <= 3600) //Locker aperto --> accendo LED Verde
@@ -171,12 +179,10 @@ static THD_FUNCTION(PhotoResistorThread, arg) {
 }
 
 //*********ISR user button************//
-static void confirmation_button(void*arg)
-{
+static void confirmation_button(void *arg) {
   (void)arg;
   press_button_flag = 1;
 }
-
 
 //*********Inserimento codice PIN************//
 
@@ -193,111 +199,140 @@ static THD_FUNCTION(Code, arg) {
   ssd1306UpdateScreen(&SSD1306D1);
 
   //Pulisco LED di errore
-  palClearPad(GPIOB,3U);
+  palClearPad(GPIOB, 3U);
 
-  while(true)
-  {
-    if(!lock_box)
-    {
   while (true) {
     if (!lock_box) {
-      //Upoad Display
-      ssd1306FillScreen(&SSD1306D1, 0x00);           //pulizia dello schermo
+      if (!open_flag) {
+        //Upoad Display
+        ssd1306FillScreen(&SSD1306D1, 0x00);           //pulizia dello schermo
 
-    //******Stampa a video della frase: ScassaForte\nInsert PIN...
+        //******Stampa a video della frase: ScassaForte\nInsert PIN...
 
-    ssd1306GotoXy(&SSD1306D1, 5, 1);
-    chsnprintf(buff, BUFF_SIZE, "sCassaForte");
-    ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
-
-    ssd1306GotoXy(&SSD1306D1, 23, 24);
-    chsnprintf(buff, BUFF_SIZE, "Insert PIN");
-    ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_7x10, SSD1306_COLOR_BLACK);
-
-    ssd1306GotoXy(&SSD1306D1,55,38);
-    chsnprintf(buff, BUFF_SIZE, "%d",rotation_number);
-    ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
-
-      ssd1306GotoXy(&SSD1306D1, 55, 38);
-      chsnprintf(buff, BUFF_SIZE, "%d", rotation_number);
-      ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
-
-    //if(!palReadPad(GPIOB,3U))  --> l'ENCODER ha il pulsante SW rotto, usiamo lo user button
-    if(press_button_flag)
-    {
-
-      switch (rotation_number)
-      {
-      case CODE:
-        open_flag = 1; //Abilito flag di apertura locker
-
-        ssd1306FillScreen(&SSD1306D1, 0x00); //Pulizia dello schermo
-        ssd1306GotoXy(&SSD1306D1,21,24);
-        chsnprintf(buff, BUFF_SIZE, "Unlocked"); //Stampa a video dello stato del locker
+        ssd1306GotoXy(&SSD1306D1, 5, 1);
+        chsnprintf(buff, BUFF_SIZE, "sCassaForte");
         ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
-        ssd1306UpdateScreen(&SSD1306D1);
 
-        break;
+        ssd1306GotoXy(&SSD1306D1, 23, 24);
+        chsnprintf(buff, BUFF_SIZE, "Insert PIN");
+        ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_7x10, SSD1306_COLOR_BLACK);
 
-      default:
-
-        ssd1306FillScreen(&SSD1306D1, 0x00); //Pulizia dello schermo
-        ssd1306GotoXy(&SSD1306D1,10,24);
-        chsnprintf(buff, BUFF_SIZE, "Wrong code"); //Messaggio di codice errato
+        ssd1306GotoXy(&SSD1306D1, 55, 38);
+        chsnprintf(buff, BUFF_SIZE, "%d", rotation_number);
         ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
+
         ssd1306UpdateScreen(&SSD1306D1);
-
-        palSetPad(GPIOB,3U); //Accendo LED rosso per segnalare errore
-        palSetPad(GPIOA,10U); //Accensione buzzer per segnare errore
-
-        chThdSleepMilliseconds(1000);
-
-        palClearPad(GPIOB,3U); //Spengo LED rosso
-        palClearPad(GPIOA,10U); //Spengo buzzer
-
-        if(error_count < 2) //Se ci sono ancora tentativi:
-        {
-          error_count++; //Numero di errori
-
-          ssd1306FillScreen(&SSD1306D1, 0x00); //Pulizia dello schermo
-          ssd1306GotoXy(&SSD1306D1,0,0);
-          chsnprintf(buff, BUFF_SIZE, "Tentativi rimasti: ");
-          ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_7x10, SSD1306_COLOR_WHITE);
-
-          ssd1306GotoXy(&SSD1306D1,55,35);
-          chsnprintf(buff, BUFF_SIZE, "%d ",3 - error_count); //Numero di tentativi rimasti stampati a video
-          ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
-          ssd1306UpdateScreen(&SSD1306D1);
-        }
-        else //Se non ci sono più tentativi:
-        {
-          lock_box = 1;
-
-          ssd1306FillScreen(&SSD1306D1, 0x00); //Pulizia dello schermo
-          ssd1306GotoXy(&SSD1306D1,22,24);
-          chsnprintf(buff, BUFF_SIZE, "Blocked"); //Messaggio di locker bloccato
-          ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18, SSD1306_COLOR_WHITE);
-          ssd1306UpdateScreen(&SSD1306D1);
-
-        }
 
       }
-      press_button_flag = 0; //Il pulsante è stato rilasciato e pulisco il flag per le misurazioni future
-      rotation_number = 0; //Rimetto a zero il numero di ticks per la futura misurazione
+
+      //if(!palReadPad(GPIOB,3U))  --> l'ENCODER ha il pulsante SW rotto, usiamo lo user button
+      if (press_button_flag) {
+
+        switch (rotation_number) {
+        case CODE:
+          open_flag = 1; //Abilito flag di apertura locker
+          error_count = 0;
+
+          ssd1306FillScreen(&SSD1306D1, 0x00); //Pulizia dello schermo
+          ssd1306GotoXy(&SSD1306D1, 21, 24);
+          chsnprintf(buff, BUFF_SIZE, "Unlocked"); //Stampa a video dello stato del locker
+          ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18,
+                      SSD1306_COLOR_WHITE);
+          ssd1306UpdateScreen(&SSD1306D1);
+
+          break;
+
+        default:
+
+          ssd1306FillScreen(&SSD1306D1, 0x00); //Pulizia dello schermo
+          ssd1306GotoXy(&SSD1306D1, 10, 24);
+          chsnprintf(buff, BUFF_SIZE, "Wrong code"); //Messaggio di codice errato
+          ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18,
+                      SSD1306_COLOR_WHITE);
+          ssd1306UpdateScreen(&SSD1306D1);
+
+          palSetPad(GPIOB, 3U); //Accendo LED rosso per segnalare errore
+          palSetPad(GPIOA, 10U); //Accensione buzzer per segnare errore
+
+          chThdSleepMilliseconds(1000);
+
+          palClearPad(GPIOB, 3U); //Spengo LED rosso
+          palClearPad(GPIOA, 10U); //Spengo buzzer
+
+          if (error_count < 2) //Se ci sono ancora tentativi:
+              {
+            error_count++; //Numero di errori
+
+            ssd1306FillScreen(&SSD1306D1, 0x00); //Pulizia dello schermo
+            ssd1306GotoXy(&SSD1306D1, 0, 0);
+            chsnprintf(buff, BUFF_SIZE, "Tentativi rimasti: ");
+            ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_7x10,
+                        SSD1306_COLOR_WHITE);
+
+            ssd1306GotoXy(&SSD1306D1, 55, 35);
+            chsnprintf(buff, BUFF_SIZE, "%d ", 3 - error_count); //Numero di tentativi rimasti stampati a video
+            ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18,
+                        SSD1306_COLOR_WHITE);
+            ssd1306UpdateScreen(&SSD1306D1);
+          }
+          else //Se non ci sono più tentativi:
+          {
+            lock_box = 1;
+
+            ssd1306FillScreen(&SSD1306D1, 0x00); //Pulizia dello schermo
+            ssd1306GotoXy(&SSD1306D1, 22, 24);
+            chsnprintf(buff, BUFF_SIZE, "Blocked"); //Messaggio di locker bloccato
+            ssd1306Puts(&SSD1306D1, buff, &ssd1306_font_11x18,
+                        SSD1306_COLOR_WHITE);
+            ssd1306UpdateScreen(&SSD1306D1);
+
+          }
+
+        }
+        press_button_flag = 0; //Il pulsante è stato rilasciato e pulisco il flag per le misurazioni future
+        rotation_number = 0; //Rimetto a zero il numero di ticks per la futura misurazione
+      }
     }
-    }
-    else
-    {
+    else {
 
     }
-      // This waits 1 second
-      chThdSleepMilliseconds(1000);
+    // This waits 1 second
+    chThdSleepMilliseconds(1000);
   }
 }
+
+//************Gestione sensore IR***********//
+static THD_WORKING_AREA(waIR, 128);
+static THD_FUNCTION(IR, arg) {
+  (void)arg;
+  chRegSetThreadName("IR");
+
+  int val;
+
+  palSetPadMode( GPIOA, 4, PAL_MODE_INPUT_PULLDOWN );
+
+  while (true) {
+  val=palReadPad(GPIOA, 4);
+  if (palReadPad(GPIOA, 4) == PAL_HIGH)
+  palSetPad(GPIOA, 7U);
+  else
+  palClearPad(GPIOA, 7U);
+
+  chThdSleepMilliseconds(50);
+  }
+
+}
+
+
 
 int main(void) {
   halInit();
   chSysInit();
+
+  sdStart(&SD2, NULL);
+
+  //LED per TX-RX IR cfg
+  palSetPadMode(GPIOA, 7U, PAL_MODE_OUTPUT_PUSHPULL);
 
   //ERROR LED PIN cfg
   palSetPadMode(GPIOB, 3U, PAL_MODE_OUTPUT_PUSHPULL); //LED rosso per erorri di inserimento codice
@@ -329,11 +364,10 @@ int main(void) {
   //ADC connection --> PINC0
   palSetPadMode(GPIOC, 0U, PAL_MODE_INPUT_ANALOG);
 
-
   //Configurazione BLUE_BUTTON
   //palSetPadMode(GPIOC,GPIOC_BUTTON,PAL_MODE_INPUT);
-  palEnablePadEvent(GPIOC,GPIOC_BUTTON,PAL_EVENT_MODE_FALLING_EDGE);
-  palSetPadCallback(GPIOC,GPIOC_BUTTON,confirmation_button,NULL);
+  palEnablePadEvent(GPIOC, GPIOC_BUTTON, PAL_EVENT_MODE_FALLING_EDGE);
+  palSetPadCallback(GPIOC, GPIOC_BUTTON, confirmation_button, NULL);
 
   //Configurazione LED RGB --> PA9,PA8,PB5
   palSetPadMode(GPIOB, 5U, PAL_MODE_OUTPUT_PUSHPULL); //Blue
@@ -356,10 +390,6 @@ int main(void) {
   // It enables the periodic callback at the end of pulse
   pwmEnableChannelNotification(&PWMD3, 0);
 
-  //It enables the callback on encoder direction
-  palEnableLineEvent(BTN_ENCODER_DIR_LINE, PAL_EVENT_MODE_RISING_EDGE);
-  palSetLineCallback(BTN_ENCODER_DIR_LINE, button_dir_cb, NULL);
-
   //************Chiamate ai Thread**********//
 
   // Thread segnale PWM per controllo SERVO
@@ -374,7 +404,8 @@ int main(void) {
   chThdCreateStatic(waCode, sizeof(waCode), NORMALPRIO + 2, Code, NULL);
 
   //Thread trasmissione IR-RX
-  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO+2, Thread1, NULL);
+  chThdCreateStatic(waIR, sizeof(waIR), NORMALPRIO + 2, IR,
+                    NULL);
 
 
   while (true) {

@@ -1,10 +1,10 @@
 #include "ch.h"
 
-#define IRTX_LINE PAL_LINE(GPIOC, 0U)
-#define IRRX_LINE PAL_LINE(GPIOC, 1U)
-#define LED_LINE PAL_LINE(GPIOA, GPIOA_LED_GREEN)
+#define IRTX_LINE PAL_LINE(GPIOC, 1U)
+#define IRRX_LINE PAL_LINE(GPIOA, 4U)
+#define LED_LINE PAL_LINE(GPIOC,GPIOA_LED_GREEN)
 
-static THD_WORKING_AREA(waThread1, 128);
+static THD_WORKING_AREA(waThread1, 512);
 static THD_FUNCTION(Thread1, arg) {
 
   (void)arg;
@@ -14,7 +14,10 @@ static THD_FUNCTION(Thread1, arg) {
   palSetLineMode(LED_LINE, PAL_MODE_OUTPUT_PUSHPULL);
   palClearLine(LED_LINE);
 
+  //palSetLine(IRTX_LINE);
+
   while (true) {
+    chThdSleepMilliseconds(10);
     if (palReadLine(IRRX_LINE)==1) {
 
          palSetLine(LED_LINE);

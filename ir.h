@@ -2,9 +2,9 @@
 
 #define IRTX_LINE PAL_LINE(GPIOC, 1U)
 #define IRRX_LINE PAL_LINE(GPIOA, 4U)
-#define LED_LINE PAL_LINE(GPIOC,GPIOA_LED_GREEN)
+#define LED_LINE PAL_LINE(GPIOB, 3U)
 
-static THD_WORKING_AREA(waThread1, 512);
+static THD_WORKING_AREA(waThread1, 128);
 static THD_FUNCTION(Thread1, arg) {
 
   (void)arg;
@@ -14,7 +14,7 @@ static THD_FUNCTION(Thread1, arg) {
   palSetLineMode(LED_LINE, PAL_MODE_OUTPUT_PUSHPULL);
   palClearLine(LED_LINE);
 
-  //palSetLine(IRTX_LINE);
+  palSetLine(IRTX_LINE);
 
   while (true) {
     chThdSleepMilliseconds(10);
